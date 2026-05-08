@@ -173,6 +173,11 @@ sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
 echo "Installing Aluminum-Ice fork..."
 python3 -m pip install /tmp/pwnagotchi-${VERSION}.tar.gz --break-system-packages
 
+# --- fix to get werkzeug working ---
+echo "Pinning Flask/Werkzeug to working versions for Python 3.11..."
+python3 -m pip install Werkzeug==2.0.3 Flask==2.0.3 Jinja2==3.0.3 --break-system-packages
+# ------------------------
+
 echo "Setting hostname to $HOSTNAME..."
 echo "$HOSTNAME" > /etc/hostname
 echo "127.0.1.1 $HOSTNAME" >> /etc/hosts
