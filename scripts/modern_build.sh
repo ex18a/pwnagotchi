@@ -76,18 +76,26 @@ apt-get install -y --no-install-recommends \
     libpcap-dev libusb-1.0-0-dev libnetfilter-queue-dev \
     fonts-dejavu fonts-freefont-ttf
 
-# 2. Compile Bettercap from Source (v2.32.0 is more compatible with older Go)
+echo "--- Installing Pwngrid (64-bit) ---"
+# 1. Download the correct aarch64 zip
+curl -L https://github.com/evilsocket/pwngrid/releases/download/v1.10.3/pwngrid_linux_aarch64_v1.10.3.zip -o /tmp/pwngrid.zip
+# 2. Extract it directly to /usr/bin
+unzip -o /tmp/pwngrid.zip -d /usr/bin/
+# 3. Ensure it has execution permissions
+chmod +x /usr/bin/pwngrid
+# 4. Clean up the temp file
+rm /tmp/pwngrid.zip
+
+# 1. Compile Bettercap from Source (v2.32.0 is more compatible with older Go)
 echo "Compiling Bettercap v2.32.0 from source..."
 export GOPATH=/tmp/go
 git clone --branch v2.32.0 https://github.com/bettercap/bettercap.git /tmp/bettercap
 cd /tmp/bettercap
-
-# 3. Build the binary
+# 2. Build the binary
 make build
 # Install to /usr/bin so bettercap-launcher finds it
 install -m 755 bettercap /usr/bin/bettercap
-
-# 4. Cleanup build artifacts
+# 3. Cleanup build artifacts
 cd /
 rm -rf /tmp/bettercap /tmp/go
 
@@ -95,38 +103,30 @@ echo "--- Installing Nexmon ---"
 curl -LfH "User-Agent: Mozilla/5.0" https://http.kali.org/kali/pool/non-free-firmware/f/firmware-nexmon/firmware-nexmon_0.2_all.deb -o /tmp/firmware-nexmon.deb
 curl -LfH "User-Agent: Mozilla/5.0" https://http.kali.org/kali/pool/contrib/b/brcmfmac-nexmon-dkms/brcmfmac-nexmon-dkms_6.12.2_all.deb -o /tmp/nexmon-dkms.deb
 
-# 2. Safety check: make sure we didn't just download an HTML redirect page
+# 1. Safety check: make sure we didn't just download an HTML redirect page
 if ! file /tmp/firmware-nexmon.deb | grep -q "Debian binary package"; then
     echo "ERROR: Download failed. The file is not a valid .deb archive."
     exit 1
 fi
-
 # 2. Purge the old stock firmware
 apt-get purge -y firmware-brcm80211
-
 # 3. Install the custom drivers
 dpkg -i /tmp/firmware-nexmon.deb /tmp/nexmon-dkms.deb || apt-get install -f -y || true
-
-
 # 4. Clean up the installers
 rm /tmp/firmware-nexmon.deb /tmp/nexmon-dkms.deb
 
 echo "Creating Monitor Mode Helper Scripts..."
-
 # Create the mon0 start script
 cat <<INNEREOF > /usr/bin/monstart
 #!/bin/bash
 # 1. Ensure the radio isn't soft-blocked
 rfkill unblock wifi
-
 # 2. Ensure wlan0 is up so iw can see it
 ip link set wlan0 up
-
 # 3. Check if mon0 already exists, if not, create it
 if ! ip link show mon0 > /dev/null 2>&1; then
     iw dev wlan0 interface add mon0 type monitor
 fi
-
 # 4. Bring the monitor interface up
 ip link set mon0 up
 echo "Monitor interface mon0 started."
