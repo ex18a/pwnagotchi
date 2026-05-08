@@ -211,6 +211,15 @@ touch /root/.pwnagotchi-auto && systemctl restart pwnagotchi
 
 You learn more about me at https://pwnagotchi.ai/
 INNEREOF
+
+# --- SERVICE ENABLING --
+echo "Enabling core services..."
+
+systemctl enable dphys-swapfile.service
+systemctl enable bettercap.service
+systemctl enable pwnagotchi.service
+systemctl enable pwngrid-peer.service
+
 EOF
 
 ###---- end chroot -----
