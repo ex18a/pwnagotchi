@@ -8,7 +8,7 @@ main.custom_plugin_repos = [
 main.iface = "mon0"
 main.mon_start_cmd = "/usr/bin/monstart"
 main.mon_stop_cmd = "/usr/bin/monstop"
-main.mon_max_blind_epochs = 50
+main.mon_max_blind_epochs = 10
 main.no_restart = false
 main.whitelist = [
   "EXAMPLE_NETWORK",
@@ -26,8 +26,8 @@ main.plugins.grid.exclude = [
   "YourHomeNetworkHere"
 ]
 
-main.plugins.auto-update.enabled = true
-main.plugins.auto-update.install = true
+main.plugins.auto-update.enabled = false
+main.plugins.auto-update.install = false
 main.plugins.auto-update.interval = 1
 
 main.plugins.net-pos.enabled = false
@@ -93,7 +93,7 @@ main.plugins.ups_lite.shutdown = 2
 
 main.plugins.gpio_buttons.enabled = false
 
-main.plugins.led.enabled = true
+main.plugins.led.enabled = false
 main.plugins.led.led = 0
 main.plugins.led.delay = 200
 main.plugins.led.patterns.loaded = "oo  oo  oo oo  oo  oo  oo"
@@ -122,7 +122,7 @@ main.plugins.led.patterns.peer_lost = "oo  oo  oo oo  oo  oo  oo"
 main.plugins.logtail.enabled = false
 main.plugins.logtail.max-lines = 10000
 
-main.plugins.session-stats.enabled = true
+main.plugins.session-stats.enabled = false
 main.plugins.session-stats.save_directory = "/var/tmp/pwnagotchi/sessions/"
 
 main.plugins.mastodon.enabled = false
@@ -230,9 +230,9 @@ ui.web.origin = ""
 ui.web.port = 8080
 ui.web.on_frame = ""
 
-ui.display.enabled = true
+ui.display.enabled = false
 ui.display.rotation = 180
-ui.display.type = "waveshare_2"
+ui.display.type = "waveshare_4"
 ui.display.color = "black"
 
 bettercap.scheme = "http"
