@@ -12,8 +12,8 @@ apt-get update && apt-get install -y wget xz-utils parted kpartx qemu-user-stati
 
 # 1. Download base image if it doesn't exist
 if [ ! -f "dist/base_64.img" ]; then
-    echo "Downloading base 64-bit image..."
-    curl -L https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2023-12-06/2023-12-05-raspios-bookworm-arm64-lite.img.xz -o base.img.xz
+    echo "Downloading latest Raspberry Pi OS Lite (64-bit) image..."
+    curl -L https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-latest/root.img.xz -o base.img.xz
     xz -d base.img.xz
     mv base.img dist/base_64.img
 fi
@@ -68,7 +68,7 @@ set -e  # This forces the internal script to stop on any error
 apt-get update
 apt-get install -y --no-install-recommends \
     dkms python3 python3-pip python3-full python3-dev \
-    build-essential pkg-config cmake \
+    build-essential pkg-config cmake unzip\
     libatlas-base-dev libgpiod-dev libxslt-dev \
     libxml2-dev zlib1g-dev raspberrypi-kernel-headers \
     libdbus-1-dev libglib2.0-dev \
