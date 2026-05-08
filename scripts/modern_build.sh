@@ -84,10 +84,8 @@ cd /tmp/bettercap
 
 # 3. Build the binary
 make build
-# Install to /usr/local/bin
-install -m 755 bettercap /usr/local/bin/bettercap
-
-mkdir -p /usr/local/share/bettercap/caplets
+# Install to /usr/bin so bettercap-launcher finds it
+install -m 755 bettercap /usr/bin/bettercap
 
 # 4. Cleanup build artifacts
 cd /
