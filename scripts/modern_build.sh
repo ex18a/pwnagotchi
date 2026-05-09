@@ -8,13 +8,13 @@ OUTPUT_IMG="dist/pwnagotchi-${VERSION}-64bit.img"
 TARBALL="dist/pwnagotchi-${VERSION}.tar.gz"
 
 echo "--- Preparing 64-bit Environment ---"
-apt-get update && apt-get install -y wget xz-utils parted kpartx qemu-user-static curl python3-full
+apt-get update && apt-get install -y file wget xz-utils parted kpartx qemu-user-static curl python3-full
 
 # 1. Download base image if it doesn't exist
 if [ ! -f "dist/base_64.img" ]; then
-    echo "Downloading latest Raspberry Pi OS Lite (64-bit) image..."
-    curl -L https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-latest/root.img.xz -o base.img.xz
-    xz -d base.img.xz
+    echo "Downloading and extracting base image..."
+    curl -L https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-04-14/2026-04-13-raspios-trixie-arm64-lite.img.xz -o base.img.xz
+    xz -df base.img.xz
     mv base.img dist/base_64.img
 fi
 
@@ -60,7 +60,7 @@ touch /mnt/boot/ssh
 # Enable USB Ethernet Gadget mode in cmdline.txt
 sed -i 's/$/ modules-load=dwc2,g_ether/' /mnt/boot/cmdline.txt
 
-# Use chroot to run commands INSIDE the Raspberry Pi image
+# Chroot to run commands INSIDE the Raspberry Pi image
 echo "Starting internal installation (this will take a while)..."
 chroot /mnt /bin/bash <<EOF
 set -e  # This forces the internal script to stop on any error
@@ -68,13 +68,22 @@ set -e  # This forces the internal script to stop on any error
 apt-get update
 apt-get install -y --no-install-recommends \
     dkms python3 python3-pip python3-full python3-dev \
-    build-essential pkg-config cmake unzip\
-    libatlas-base-dev libgpiod-dev libxslt-dev \
-    libxml2-dev zlib1g-dev raspberrypi-kernel-headers \
-    libdbus-1-dev libglib2.0-dev \
-    golang-go git \
-    libpcap-dev libusb-1.0-0-dev libnetfilter-queue-dev \
-    fonts-dejavu fonts-freefont-ttf
+    build-essential pkg-config cmake unzip \
+    libopenblas-dev python3-smbus \
+    libgpiod-dev python3-pil \
+    libxslt1-dev libopenjp2-7 \
+    libxml2-dev libtiff6 \
+    zlib1g-dev aircrack-ng \
+    linux-headers-rpi-v8 dphys-swapfile \
+    libdbus-1-dev \
+    libglib2.0-dev \
+    golang-go \
+    git \
+    libpcap-dev \
+    libusb-1.0-0-dev \
+    libnetfilter-queue-dev \
+    fonts-dejavu \
+    fonts-freefont-ttf
 
 echo "--- Installing Pwngrid (64-bit) ---"
 # 1. Download the correct aarch64 zip
@@ -99,6 +108,19 @@ install -m 755 bettercap /usr/bin/bettercap
 cd /
 rm -rf /tmp/bettercap /tmp/go
 
+echo "--- Installing Bettercap Caplets and Web UI ---"
+# Download Caplets
+mkdir -p /usr/local/share/bettercap/caplets
+git clone https://github.com/bettercap/caplets.git /tmp/caplets
+cp -r /tmp/caplets/* /usr/local/share/bettercap/caplets/
+rm -rf /tmp/caplets
+
+# Download Web UI
+mkdir -p /usr/local/share/bettercap/ui
+curl -L https://github.com/bettercap/ui/releases/download/v1.3.0/ui.zip -o /tmp/ui.zip
+unzip -o /tmp/ui.zip -d /usr/local/share/bettercap/ui
+rm /tmp/ui.zip
+
 echo "--- Installing Nexmon ---"
 curl -LfH "User-Agent: Mozilla/5.0" https://http.kali.org/kali/pool/non-free-firmware/f/firmware-nexmon/firmware-nexmon_0.2_all.deb -o /tmp/firmware-nexmon.deb
 curl -LfH "User-Agent: Mozilla/5.0" https://http.kali.org/kali/pool/contrib/b/brcmfmac-nexmon-dkms/brcmfmac-nexmon-dkms_6.12.2_all.deb -o /tmp/nexmon-dkms.deb
@@ -115,48 +137,6 @@ dpkg -i /tmp/firmware-nexmon.deb /tmp/nexmon-dkms.deb || apt-get install -f -y |
 # 4. Clean up the installers
 rm /tmp/firmware-nexmon.deb /tmp/nexmon-dkms.deb
 
-echo "Creating Monitor Mode Helper Scripts..."
-# Create the mon0 start script
-cat <<INNEREOF > /usr/bin/monstart
-#!/bin/bash
-# 1. Ensure the radio isn't soft-blocked
-rfkill unblock wifi
-# 2. Ensure wlan0 is up so iw can see it
-ip link set wlan0 up
-# 3. Check if mon0 already exists, if not, create it
-if ! ip link show mon0 > /dev/null 2>&1; then
-    iw dev wlan0 interface add mon0 type monitor
-fi
-# 4. Bring the monitor interface up
-ip link set mon0 up
-echo "Monitor interface mon0 started."
-INNEREOF
-
-# Create the mon0 stop script
-cat <<INNEREOF > /usr/bin/monstop
-#!/bin/bash
-if ip link show mon0 > /dev/null 2>&1; then
-    ip link set mon0 down
-    iw dev mon0 del
-fi
-echo "Monitor interface mon0 stopped."
-INNEREOF
-
-# Make them both executable
-chmod +x /usr/bin/monstart /usr/bin/monstop
-
-# Force the Pwnagotchi to use the new mon0 interface
-mkdir -p /etc/pwnagotchi
-cat <<INNEREOF > /etc/pwnagotchi/config.toml
-main.name = "$HOSTNAME"
-main.lang = "en"
-main.whitelist = []
-main.plugins.grid.enabled = true
-main.iface = "mon0"
-ui.display.enabled = true
-ui.display.type = "waveshare_4"
-INNEREOF
-
 echo "Creating passwordless user 'pi'..."
 if ! id "pi" &>/dev/null; then
     useradd -m -G sudo,video,input -s /bin/bash pi
@@ -171,11 +151,37 @@ sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/' /etc/ssh/sshd_conf
 sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
 
 echo "Installing Aluminum-Ice fork..."
+# Downgrade pip so it ignores the broken 'gym' metadata syntax
+python3 -m pip install "pip<24.1" --break-system-packages --ignore-installed
 python3 -m pip install /tmp/pwnagotchi-${VERSION}.tar.gz --break-system-packages
 
+
+# --- NEW SCRIPT INJECTION BLOCK ---
+echo "Injecting official Pwnlib and Monitor scripts..."
+# 1. Create the target folder inside the chroot
+mkdir -p /tmp/pwn_source
+# 2. Extract the tarball into that folder
+tar -xzf /tmp/pwnagotchi-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
+# 3. Copy the official scripts to their final homes
+cp /tmp/pwn_source/builder/data/usr/bin/monstart /usr/bin/monstart
+cp /tmp/pwn_source/builder/data/usr/bin/monstop /usr/bin/monstop
+cp /tmp/pwn_source/builder/data/usr/bin/pwnlib /usr/bin/pwnlib
+# 4. Clean up and set permissions
+chmod +x /usr/bin/monstart /usr/bin/monstop /usr/bin/pwnlib
+rm -rf /tmp/pwn_source
+# --- END OF NEW BLOCK ---
+
+# Create the directory for custom plugins
+mkdir -p /usr/local/share/pwnagotchi/custom-plugins/
+# ------------------------------
+
 # --- fix to get werkzeug working ---
-echo "Pinning Flask/Werkzeug to working versions for Python 3.11..."
-python3 -m pip install Werkzeug==2.0.3 Flask==2.0.3 Jinja2==3.0.3 --break-system-packages
+echo "Force-installing compatible Flask/Werkzeug for Web UI..."
+python3 -m pip install Werkzeug==2.0.3 Flask==2.0.3 Jinja2==3.0.3 \
+    --break-system-packages \
+    --ignore-installed \
+    --force-reinstall \
+    --no-deps || true
 # ------------------------
 
 echo "Setting hostname to $HOSTNAME..."
@@ -212,6 +218,10 @@ touch /root/.pwnagotchi-auto && systemctl restart pwnagotchi
 You learn more about me at https://pwnagotchi.ai/
 INNEREOF
 
+# Increase swap size to 512MB for AI stability
+echo "Adjusting swap size..."
+sed -i 's/^CONF_SWAPSIZE=.*$/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
+
 # --- SERVICE ENABLING --
 echo "Enabling core services..."
 
@@ -219,9 +229,16 @@ systemctl enable dphys-swapfile.service
 systemctl enable bettercap.service
 systemctl enable pwnagotchi.service
 systemctl enable pwngrid-peer.service
+systemctl enable fstrim.timer
+
+systemctl disable apt-daily.timer
+systemctl disable apt-daily-upgrade.timer
+systemctl disable wpa_supplicant.service
+
+# Remove SSH host keys so they regenerate on first boot
+rm -f /etc/ssh/ssh_host*_key*
 
 EOF
-
 ###---- end chroot -----
 
 # NEW: Unmount system partitions after chroot finishes
@@ -230,8 +247,14 @@ for dir in /run /sys /proc /dev/pts /dev; do
     umount -l /mnt$dir
 done
 
-# Enable hardware overlay for Gadget Mode
+# Hardware Overlays and System Config
 echo "dtoverlay=dwc2" >> /mnt/boot/config.txt
+echo "dtoverlay=spi1-3cs" >> /mnt/boot/config.txt
+echo "dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4" >> /mnt/boot/config.txt
+echo "dtparam=spi=on" >> /mnt/boot/config.txt
+echo "dtparam=i2c_arm=on" >> /mnt/boot/config.txt
+echo "gpu_mem=16" >> /mnt/boot/config.txt
+echo -e "\ni2c-dev" >> /mnt/etc/modules
 
 # 4. Cleanup
 echo "Unmounting and cleaning up..."
