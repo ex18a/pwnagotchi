@@ -4,262 +4,213 @@ set -e
 # These come from the Makefile
 VERSION=$1
 HOSTNAME=$2
-OUTPUT_IMG="dist/pwnagotchi-${VERSION}-64bit.img"
+OUTPUT_IMG="dist/pwnagotchi-${VERSION}-32bit.img"
+# FIXED: Pointing to the dist folder where the Makefile puts the tarball
 TARBALL="dist/pwnagotchi-${VERSION}.tar.gz"
 
-echo "--- Preparing 64-bit Environment ---"
-apt-get update && apt-get install -y file wget xz-utils parted kpartx qemu-user-static curl python3-full
+echo "--- Preparing 32-bit Environment ---"
+apt-get update && apt-get install -y file wget xz-utils parted kpartx qemu-user-static curl python3-full unzip
 
-# 1. Download base image if it doesn't exist
-if [ ! -f "dist/base_64.img" ]; then
-    echo "Downloading and extracting base image..."
-    curl -L https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-04-14/2026-04-13-raspios-trixie-arm64-lite.img.xz -o base.img.xz
-    xz -df base.img.xz
-    mv base.img dist/base_64.img
+echo "Downloading Raspberry Pi OS Lite image..."
+if [ ! -f "dist/base_32.img" ]; then
+    echo "Downloading Raspberry Pi OS Lite image..."
+    curl -L -H "User-Agent: Mozilla/5.0" \
+        "https://downloads.raspberrypi.com/raspios_lite_armhf/images/raspios_lite_armhf-2021-05-28/2021-05-07-raspios-buster-armhf-lite.zip" \
+        -o base.zip
+
+    FILESIZE=$(stat -c%s "base.zip")
+    if [ "$FILESIZE" -lt 1000000 ]; then
+        echo "ERROR: Downloaded file is too small ($FILESIZE bytes)."
+        exit 1
+    fi
+
+    echo "Extracting image..."
+    unzip -p base.zip > dist/base_32.img
+    rm base.zip
 fi
 
 echo "Creating build image: $OUTPUT_IMG"
-cp dist/base_64.img "$OUTPUT_IMG"
+cp dist/base_32.img "$OUTPUT_IMG"
 
-# --- EXPANSION PHASE ---
 echo "Expanding image size"
-# Add 7GB to the image file
 dd if=/dev/zero bs=1M count=7168 >> "$OUTPUT_IMG"
-
-# Fix the partition table and grow the root partition (partition 2)
 parted "$OUTPUT_IMG" resizepart 2 100%
 
-# Setup loop device to fix the filesystem
 loop_dev=$(losetup -fP --show "$OUTPUT_IMG")
 sleep 2
 
-# Force a filesystem check and then resize the actual filesystem
 e2fsck -f "${loop_dev}p2" || true
 resize2fs "${loop_dev}p2"
-# -----------------------
 
-# 2. Mount the image
 echo "Mounting image..."
 mount "${loop_dev}p2" /mnt
 mount "${loop_dev}p1" /mnt/boot
 
-# 2.1: Bind mount system directories so DKMS can work
 echo "Mounting system partitions for DKMS..."
 for dir in /dev /dev/pts /proc /sys /run; do
     mount --bind $dir /mnt$dir
 done
 
-# 3. Inject and Install Pwnagotchi
 echo "Injecting source: $TARBALL"
 cp "$TARBALL" /mnt/tmp/
-cp /usr/bin/qemu-aarch64-static /mnt/usr/bin/
+cp /usr/bin/qemu-arm-static /mnt/usr/bin/
 
-# Enable SSH on boot
 touch /mnt/boot/ssh
-
-# Enable USB Ethernet Gadget mode in cmdline.txt
 sed -i 's/$/ modules-load=dwc2,g_ether/' /mnt/boot/cmdline.txt
 
-# Chroot to run commands INSIDE the Raspberry Pi image
-echo "Starting internal installation (this will take a while)..."
+echo "Starting internal installation..."
 chroot /mnt /bin/bash <<EOF
-set -e  # This forces the internal script to stop on any error
+set -e
 
-apt-get update
+echo "--- Patching Repositories for Legacy Buster ---"
+apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 82B129927FA3303E || true
+
+cat <<REPO_EOF > /etc/apt/sources.list
+deb [trusted=yes] http://legacy.raspbian.org/raspbian/ buster main contrib non-free rpi
+REPO_EOF
+
+cat <<REPO_EOF > /etc/apt/sources.list.d/raspi.list
+deb [trusted=yes] http://archive.raspberrypi.org/debian/ buster main
+REPO_EOF
+
+apt-get update -o Acquire::Check-Valid-Until=false || true
+apt-get update --allow-unauthenticated -y
+
 apt-get install -y --no-install-recommends \
-    dkms python3 python3-pip python3-full python3-dev \
+    dkms python3 python3-pip python3-dev \
     build-essential pkg-config cmake unzip \
-    libopenblas-dev python3-smbus \
-    libgpiod-dev python3-pil \
-    libxslt1-dev libopenjp2-7 \
-    libxml2-dev libtiff6 \
-    zlib1g-dev aircrack-ng \
-    linux-headers-rpi-v8 dphys-swapfile \
-    libdbus-1-dev \
-    libglib2.0-dev \
-    golang-go \
-    git \
-    libpcap-dev \
-    libusb-1.0-0-dev \
-    libnetfilter-queue-dev \
-    fonts-dejavu \
-    fonts-freefont-ttf
+    libatlas-base-dev libgpiod-dev libxslt1-dev \
+    libxml2-dev zlib1g-dev raspberrypi-kernel-headers \
+    libdbus-1-dev libglib2.0-dev \
+    golang-go git \
+    libpcap-dev libusb-1.0-0-dev libnetfilter-queue-dev \
+    fonts-dejavu fonts-freefont-ttf
 
-echo "--- Installing Pwngrid (64-bit) ---"
-# 1. Download the correct aarch64 zip
-curl -L https://github.com/evilsocket/pwngrid/releases/download/v1.10.3/pwngrid_linux_aarch64_v1.10.3.zip -o /tmp/pwngrid.zip
-# 2. Extract it directly to /usr/bin
+apt-get purge -y raspberrypi-net-mods dhcpcd5 triggerhappy nfs-common
+
+echo "--- Installing Pwngrid (32-bit armhf) ---"
+curl -L https://github.com/evilsocket/pwngrid/releases/download/v1.10.3/pwngrid_linux_armhf_v1.10.3.zip -o /tmp/pwngrid.zip
 unzip -o /tmp/pwngrid.zip -d /usr/bin/
-# 3. Ensure it has execution permissions
 chmod +x /usr/bin/pwngrid
-# 4. Clean up the temp file
 rm /tmp/pwngrid.zip
 
-# 1. Compile Bettercap from Source (v2.32.0 is more compatible with older Go)
-echo "Compiling Bettercap v2.32.0 from source..."
-export GOPATH=/tmp/go
+echo "Replacing system Go with 1.15.15..."
+curl -L https://golang.org/dl/go1.15.15.linux-armv6l.tar.gz -o /tmp/go.tar.gz
+rm -rf /usr/local/go
+tar -C /usr/local -xzf /tmp/go.tar.gz
+rm /tmp/go.tar.gz
+
+export GOROOT=/usr/local/go
+export GOPATH=/tmp/go_path
+export PATH=/usr/local/go/bin:\$PATH
+
+echo "Compiling Bettercap v2.32.0..."
 git clone --branch v2.32.0 https://github.com/bettercap/bettercap.git /tmp/bettercap
 cd /tmp/bettercap
-# 2. Build the binary
-make build
-# Install to /usr/bin so bettercap-launcher finds it
+go build -o bettercap main.go
 install -m 755 bettercap /usr/bin/bettercap
-# 3. Cleanup build artifacts
+
 cd /
-rm -rf /tmp/bettercap /tmp/go
+rm -rf /tmp/bettercap /tmp/go_path /usr/local/go
 
 echo "--- Installing Bettercap Caplets and Web UI ---"
-# Download Caplets
 mkdir -p /usr/local/share/bettercap/caplets
 git clone https://github.com/bettercap/caplets.git /tmp/caplets
 cp -r /tmp/caplets/* /usr/local/share/bettercap/caplets/
 rm -rf /tmp/caplets
 
-# Download Web UI
 mkdir -p /usr/local/share/bettercap/ui
 curl -L https://github.com/bettercap/ui/releases/download/v1.3.0/ui.zip -o /tmp/ui.zip
 unzip -o /tmp/ui.zip -d /usr/local/share/bettercap/ui
 rm /tmp/ui.zip
 
-echo "--- Installing Nexmon ---"
-curl -LfH "User-Agent: Mozilla/5.0" https://http.kali.org/kali/pool/non-free-firmware/f/firmware-nexmon/firmware-nexmon_0.2_all.deb -o /tmp/firmware-nexmon.deb
-curl -LfH "User-Agent: Mozilla/5.0" https://http.kali.org/kali/pool/contrib/b/brcmfmac-nexmon-dkms/brcmfmac-nexmon-dkms_6.12.2_all.deb -o /tmp/nexmon-dkms.deb
-
-# 1. Safety check: make sure we didn't just download an HTML redirect page
-if ! file /tmp/firmware-nexmon.deb | grep -q "Debian binary package"; then
-    echo "ERROR: Download failed. The file is not a valid .deb archive."
-    exit 1
-fi
-# 2. Purge the old stock firmware
-apt-get purge -y firmware-brcm80211
-# 3. Install the custom drivers
-dpkg -i /tmp/firmware-nexmon.deb /tmp/nexmon-dkms.deb || apt-get install -f -y || true
-# 4. Clean up the installers
-rm /tmp/firmware-nexmon.deb /tmp/nexmon-dkms.deb
+echo "Installing Nexmon firmware for Pi Zero 2 W..."
+mkdir -p /lib/firmware/brcm/
+[ -f /lib/firmware/brcm/brcmfmac43439-sdio.bin ] && mv /lib/firmware/brcm/brcmfmac43439-sdio.bin /lib/firmware/brcm/brcmfmac43439-sdio.bin.bak
+curl -L "https://github.com/v1s1t0r1sh3r3/nexmon_raspberry_pi/raw/master/libnexcot/firmware/bcm43439/7_95_49_0/brcmfmac43439-sdio.bin" -o /lib/firmware/brcm/brcmfmac43439-sdio.bin
+curl -L "https://github.com/v1s1t0r1sh3r3/nexmon_raspberry_pi/raw/master/libnexcot/firmware/bcm43439/7_95_49_0/brcmfmac43439-sdio.clm_blob" -o /lib/firmware/brcm/brcmfmac43439-sdio.clm_blob
+curl -L "https://github.com/v1s1t0r1sh3r3/nexmon_raspberry_pi/raw/master/libnexcot/firmware/bcm43439/7_95_49_0/brcmfmac43439-sdio.txt" -o /lib/firmware/brcm/brcmfmac43439-sdio.txt
+curl -L "https://github.com/pwnagotchi/pwnagotchi/raw/master/builder/data/nexutil" -o /usr/bin/nexutil
+chmod +x /usr/bin/nexutil
 
 echo "Creating passwordless user 'pi'..."
 if ! id "pi" &>/dev/null; then
     useradd -m -G sudo,video,input -s /bin/bash pi
 fi
-
 passwd -d pi
 passwd -d root
-
 echo "pi ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/010_pi-nopasswd
-
 sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/' /etc/ssh/sshd_config
 sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
 
-echo "Installing Aluminum-Ice fork..."
-# Downgrade pip so it ignores the broken 'gym' metadata syntax
-python3 -m pip install "pip<24.1" --break-system-packages --ignore-installed
-python3 -m pip install /tmp/pwnagotchi-${VERSION}.tar.gz --break-system-packages
-
-
-# --- NEW SCRIPT INJECTION BLOCK ---
 echo "Injecting official Pwnlib and Monitor scripts..."
-# 1. Create the target folder inside the chroot
 mkdir -p /tmp/pwn_source
-# 2. Extract the tarball into that folder
 tar -xzf /tmp/pwnagotchi-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
-# 3. Copy the official scripts to their final homes
 cp /tmp/pwn_source/builder/data/usr/bin/monstart /usr/bin/monstart
 cp /tmp/pwn_source/builder/data/usr/bin/monstop /usr/bin/monstop
 cp /tmp/pwn_source/builder/data/usr/bin/pwnlib /usr/bin/pwnlib
-# 4. Clean up and set permissions
 chmod +x /usr/bin/monstart /usr/bin/monstop /usr/bin/pwnlib
+
+echo "Installing Pwnagotchi dependencies..."
+# Clean up any failed build artifacts
+rm -rf /root/.cache/pip
+
+# Upgrade core tools
+python3 -m pip install --upgrade "pip<23.0" setuptools wheel
+
+echo "Forcing Legacy NumPy Binary..."
+# Changed to 1.21.4 based on your logs of available versions
+python3 -m pip install --only-binary=:all: --force-reinstall "numpy==1.21.4"
+
+echo "Installing requirements (Binary-Only Mode)..."
+# 1. We force pip to ONLY look for pre-compiled .whl files. 
+# 2. We skip any package that requires a compiler (which is what's failing).
+python3 -m pip install --ignore-installed \
+    --only-binary=:all: \
+    --prefer-binary \
+    -r /tmp/pwn_source/requirements.txt
+
+python3 -m pip install --no-deps /tmp/pwnagotchi-${VERSION}.tar.gz
+
 rm -rf /tmp/pwn_source
-# --- END OF NEW BLOCK ---
-
-# Create the directory for custom plugins
 mkdir -p /usr/local/share/pwnagotchi/custom-plugins/
-# ------------------------------
 
-# --- fix to get werkzeug working ---
-echo "Force-installing compatible Flask/Werkzeug for Web UI..."
-python3 -m pip install Werkzeug==2.0.3 Flask==2.0.3 Jinja2==3.0.3 \
-    --break-system-packages \
-    --ignore-installed \
-    --force-reinstall \
-    --no-deps || true
-# ------------------------
+echo "alias pwnlog='tail -f -n300 /var/log/pwn*.log | sed --unbuffered \"s/,[[:digit:]]\\\\{3\\\\}\\\\]//g\" | cut -d \" \" -f 2-'" >> /home/pi/.bashrc
+chown pi:pi /home/pi/.bashrc
 
-echo "Setting hostname to $HOSTNAME..."
 echo "$HOSTNAME" > /etc/hostname
 echo "127.0.1.1 $HOSTNAME" >> /etc/hosts
 
-echo "Configuring MOTD (Message of the Day)..."
-cat <<INNEREOF > /etc/motd
-(◕‿‿◕) $HOSTNAME
-
-Hi! I'm a pwnagotchi, please take good care of me!
-Here are some basic things you need to know to raise me properly!
-
-If you want to change my configuration, use /etc/pwnagotchi/config.toml
-
-All the configuration options can be found on /etc/pwnagotchi/default.toml,
-but don't change this file because I will recreate it every time I'm restarted!
-
-I'm managed by systemd. Here are some basic commands.
-
-If you want to know what I'm doing, you can check my logs with the command
-tail -f /var/log/pwnagotchi.log
-
-If you want to know if I'm running, you can use
-systemctl status pwnagotchi
-
-You can restart me using
-systemctl restart pwnagotchi
-
-But be aware I will go into MANUAL mode when restarted!
-You can put me back into AUTO mode using
-touch /root/.pwnagotchi-auto && systemctl restart pwnagotchi
-
-You learn more about me at https://pwnagotchi.ai/
-INNEREOF
-
-# Increase swap size to 512MB for AI stability
 echo "Adjusting swap size..."
 sed -i 's/^CONF_SWAPSIZE=.*$/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
+sed -i 's|^ExecStart=/usr/lib/bluetooth/bluetoothd$|ExecStart=/usr/lib/bluetooth/bluetoothd --noplugin=sap|' /lib/systemd/system/bluetooth.service
 
-# --- SERVICE ENABLING --
 echo "Enabling core services..."
-
 systemctl enable dphys-swapfile.service
 systemctl enable bettercap.service
 systemctl enable pwnagotchi.service
 systemctl enable pwngrid-peer.service
 systemctl enable fstrim.timer
+systemctl disable apt-daily.timer apt-daily.service apt-daily-upgrade.timer wpa_supplicant.service dnsmasq.service
 
-systemctl disable apt-daily.timer
-systemctl disable apt-daily-upgrade.timer
-systemctl disable wpa_supplicant.service
-
-# Remove SSH host keys so they regenerate on first boot
 rm -f /etc/ssh/ssh_host*_key*
-
 EOF
-###---- end chroot -----
 
-# NEW: Unmount system partitions after chroot finishes
 echo "Unmounting system partitions..."
 for dir in /run /sys /proc /dev/pts /dev; do
     umount -l /mnt$dir
 done
 
-# Hardware Overlays and System Config
 echo "dtoverlay=dwc2" >> /mnt/boot/config.txt
 echo "dtoverlay=spi1-3cs" >> /mnt/boot/config.txt
-echo "dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4" >> /mnt/boot/config.txt
 echo "dtparam=spi=on" >> /mnt/boot/config.txt
 echo "dtparam=i2c_arm=on" >> /mnt/boot/config.txt
 echo "gpu_mem=16" >> /mnt/boot/config.txt
 echo -e "\ni2c-dev" >> /mnt/etc/modules
 
-# 4. Cleanup
 echo "Unmounting and cleaning up..."
 umount /mnt/boot
 umount /mnt
 losetup -d "$loop_dev"
 
-echo "--- SUCCESS: 64-bit Pwnagotchi Image Created ---"
+echo "--- SUCCESS: 32-bit Pwnagotchi Image Created ---"

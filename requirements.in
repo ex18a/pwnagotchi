@@ -32,7 +32,7 @@ inky~=1.2
 
 # Used in the AI and UI layers.
 # Only using basic numpy features.
-numpy>=1.23.2 # Moved from 1.21.4
+numpy~=1.21.4 # Moved to 1.21.4 from 1.20
 
 # Used in the UI layer.
 # Only using core PIL features (Image, ImageFont, ImageDraw).
@@ -72,7 +72,7 @@ stable-baselines~=2.7
 # As a result, the requirement is entirely missing from the wheel file.
 # Furthermore, "<2.0.0" will fail because tensorflow v1.14 contains
 # breaking API changes in preparation for their v2.X release.
-tensorflow>=2.12.0 # from tensorflow>=1.8.0,<1.14.0
+tensorflow>=1.8.0,<1.14.0
 
 # Used for loading and writing configs.
 toml~=0.10
@@ -86,4 +86,4 @@ websockets~=8.1
 # function that was later removed in MarkupSafe v2.1.0.
 # Jinja2 v3.0 no longer uses the deprecated function but
 # falls outside the version range requested by flask.
-#MarkupSafe<2.1.0
+MarkupSafe<2.1.0
