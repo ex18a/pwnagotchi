@@ -1,6 +1,6 @@
 PWN_HOSTNAME := pwnagotchi
 PWN_VERSION  := $(shell python3 -c "exec(open('pwnagotchi/_version.py').read()); print(__version__)")
-PWN_RELEASE  := pwnagotchi-$(PWN_VERSION)-64bit
+PWN_RELEASE  := pwnagotchi-$(PWN_VERSION)-32bit
 SDIST        := dist/pwnagotchi-$(PWN_VERSION).tar.gz
 USER_ID      := $(shell id -u)
 GROUP_ID     := $(shell id -g)
@@ -9,28 +9,22 @@ GROUP_ID     := $(shell id -g)
 
 all: clean image
 
-# Merged logic to handle source distribution, sync, and the Docker build environment
 image:
-	@echo "--- Step 1: Creating Python source distribution ---"
+	@echo "--- Creating Python source distribution ---"
 	mkdir -p dist
 	python3 setup.py sdist
 
-	@echo "--- Step 2: Syncing filesystem and setting permissions ---"
+	@echo "--- Syncing filesystem and setting permissions ---"
 	sync
-	chmod +x scripts/modern_build.sh
+	chmod +x builder/pwnagotchi.sh
 
-	@echo "--- Step 3: Starting 64-bit Docker Build for $(PWN_RELEASE) ---"
-	# We use --privileged to allow mounting loop devices inside the container
+	@echo "--- Starting Docker Build for $(PWN_RELEASE) ---"
 	sudo docker run --privileged --rm -it \
 		-v /dev:/dev \
 		-v /lib/modules:/lib/modules \
 		-v $(shell pwd):/build \
 		-w /build \
-		debian:bookworm /bin/bash -c "./scripts/modern_build.sh $(PWN_VERSION) $(PWN_HOSTNAME)"
-
-	@echo "--- Step 4: Fixing file ownership ---"
-	# Docker creates files as root; this gives ownership back to the host user
-	sudo chown $(USER_ID):$(GROUP_ID) dist/pwnagotchi-$(PWN_VERSION)-64bit.img
+		debian:bookworm /bin/bash -c "./builder/pwnagotchi.sh $(PWN_VERSION) $(PWN_HOSTNAME)"
 
 	@echo "--- SUCCESS ---"
 	@echo "Build complete. Image found in dist/$(PWN_RELEASE).img"

@@ -33,7 +33,7 @@ echo "Creating build image: $OUTPUT_IMG"
 cp dist/base_32.img "$OUTPUT_IMG"
 
 echo "Expanding image size"
-dd if=/dev/zero bs=1M count=7168 >> "$OUTPUT_IMG"
+dd if=/dev/zero bs=1M count=12288 >> "$OUTPUT_IMG"
 parted "$OUTPUT_IMG" resizepart 2 100%
 
 loop_dev=$(losetup -fP --show "$OUTPUT_IMG")
@@ -84,7 +84,20 @@ apt-get install -y --no-install-recommends \
     libdbus-1-dev libglib2.0-dev \
     golang-go git \
     libpcap-dev libusb-1.0-0-dev libnetfilter-queue-dev \
-    fonts-dejavu fonts-freefont-ttf
+    fonts-dejavu fonts-freefont-ttf \
+    libavcodec58 \
+    libavformat58 \
+    libswscale5 \
+    libv4l-0 \
+    libxvidcore4 \
+    libx264-155 \
+    libgtk-3-0 \
+    libatlas3-base
+
+
+#    these make ai work but are huge
+#    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libxvidcore-dev libx264-dev libgtk-3-dev
+
 
 apt-get purge -y raspberrypi-net-mods dhcpcd5 triggerhappy nfs-common
 
@@ -119,19 +132,21 @@ git clone https://github.com/bettercap/caplets.git /tmp/caplets
 cp -r /tmp/caplets/* /usr/local/share/bettercap/caplets/
 rm -rf /tmp/caplets
 
+# Install Web UI
+echo "--- Installing Bettercap Web UI ---"
 mkdir -p /usr/local/share/bettercap/ui
-curl -L https://github.com/bettercap/ui/releases/download/v1.3.0/ui.zip -o /tmp/ui.zip
-unzip -o /tmp/ui.zip -d /usr/local/share/bettercap/ui
-rm /tmp/ui.zip
+curl -fL https://github.com/bettercap/ui/releases/download/v1.3.0/ui.zip -o /tmp/ui.zip
 
-echo "Installing Nexmon firmware for Pi Zero 2 W..."
-mkdir -p /lib/firmware/brcm/
-[ -f /lib/firmware/brcm/brcmfmac43439-sdio.bin ] && mv /lib/firmware/brcm/brcmfmac43439-sdio.bin /lib/firmware/brcm/brcmfmac43439-sdio.bin.bak
-curl -L "https://github.com/v1s1t0r1sh3r3/nexmon_raspberry_pi/raw/master/libnexcot/firmware/bcm43439/7_95_49_0/brcmfmac43439-sdio.bin" -o /lib/firmware/brcm/brcmfmac43439-sdio.bin
-curl -L "https://github.com/v1s1t0r1sh3r3/nexmon_raspberry_pi/raw/master/libnexcot/firmware/bcm43439/7_95_49_0/brcmfmac43439-sdio.clm_blob" -o /lib/firmware/brcm/brcmfmac43439-sdio.clm_blob
-curl -L "https://github.com/v1s1t0r1sh3r3/nexmon_raspberry_pi/raw/master/libnexcot/firmware/bcm43439/7_95_49_0/brcmfmac43439-sdio.txt" -o /lib/firmware/brcm/brcmfmac43439-sdio.txt
-curl -L "https://github.com/pwnagotchi/pwnagotchi/raw/master/builder/data/nexutil" -o /usr/bin/nexutil
-chmod +x /usr/bin/nexutil
+# Unzip and immediately move the contents
+unzip -o /tmp/ui.zip -d /tmp/ui_temp
+
+# The v1.3.0 zip contains a folder named 'ui'. 
+# Move everything from /tmp/ui_temp/ui/* to the destination.
+cp -r /tmp/ui_temp/ui/* /usr/local/share/bettercap/ui/
+
+# Cleanup
+rm -rf /tmp/ui.zip /tmp/ui_temp
+chown -R root:root /usr/local/share/bettercap/ui
 
 echo "Creating passwordless user 'pi'..."
 if ! id "pi" &>/dev/null; then
@@ -156,7 +171,8 @@ echo "Installing Pwnagotchi dependencies..."
 rm -rf /root/.cache/pip
 
 # Upgrade core tools
-python3 -m pip install --upgrade "pip<23.0" setuptools wheel
+python3 -m pip install "pip<23.1" setuptools wheel
+python3 -m pip install "markupsafe==2.0.1" "itsdangerous==2.0.1" "jinja2==3.0.3" "werkzeug==2.0.3" "markdown==3.3.7"
 
 echo "Forcing Legacy NumPy Binary..."
 # Changed to 1.21.4 based on your logs of available versions
@@ -192,8 +208,40 @@ systemctl enable pwnagotchi.service
 systemctl enable pwngrid-peer.service
 systemctl enable fstrim.timer
 systemctl disable apt-daily.timer apt-daily.service apt-daily-upgrade.timer wpa_supplicant.service dnsmasq.service
-
 rm -f /etc/ssh/ssh_host*_key*
+
+echo "Message of the day..."
+cat <<MOTD_EOF > /etc/motd
+        (◕‿‿◕) $HOSTNAME
+
+        Hi! I'm a pwnagotchi, please take good care of me!
+        Here are some basic things you need to know to raise me properly!
+
+        If you want to change my configuration, use /etc/pwnagotchi/config.toml
+
+        All the configuration options can be found on /etc/pwnagotchi/default.toml,
+        but don't change this file because I will recreate it every time I'm restarted!
+
+        I'm managed by systemd. Here are some basic commands.
+
+        If you want to know what I'm doing, you can check my logs with the command
+        tail -f /var/log/pwnagotchi.log
+
+        If you want to know if I'm running, you can use
+        systemctl status pwnagotchi
+
+        You can restart me using
+        systemctl restart pwnagotchi
+
+        But be aware I will go into MANUAL mode when restarted!
+        You can put me back into AUTO mode using
+        touch /root/.pwnagotchi-auto && systemctl restart pwnagotchi
+
+        You learn more about me at https://pwnagotchi.ai/
+MOTD_EOF
+sed -i 's/#PrintMotd yes/PrintMotd yes/' /etc/ssh/sshd_config
+sed -i 's/PrintMotd no/PrintMotd yes/' /etc/ssh/sshd_config
+
 EOF
 
 echo "Unmounting system partitions..."
@@ -201,12 +249,45 @@ for dir in /run /sys /proc /dev/pts /dev; do
     umount -l /mnt$dir
 done
 
-echo "dtoverlay=dwc2" >> /mnt/boot/config.txt
-echo "dtoverlay=spi1-3cs" >> /mnt/boot/config.txt
-echo "dtparam=spi=on" >> /mnt/boot/config.txt
-echo "dtparam=i2c_arm=on" >> /mnt/boot/config.txt
-echo "gpu_mem=16" >> /mnt/boot/config.txt
-echo -e "\ni2c-dev" >> /mnt/etc/modules
+# --- Writing the Multi-Device Config ---
+cat <<CONFIG_EOF > /mnt/boot/config.txt
+# Standard Display/Audio Settings
+dtparam=audio=on
+
+# --- BOARD SPECIFIC FILTERS ---
+
+# Target: Pi Zero 2 W (All revisions)
+[board-type=0x902120]
+dtoverlay=dwc2,dr_mode=peripheral
+
+# Target: Pi 3B (Revision 1.2)
+[board-type=0xa02082]
+# No gadget mode here to keep eth0 safe
+
+# Target: Pi 3B+ (Revision 1.3)
+[board-type=0xa020d3]
+# No gadget mode here to keep eth0 safe
+
+# Target: Pi 4B (All RAM variants)
+[pi4]
+dtoverlay=vc4-fkms-v3d
+max_framebuffers=2
+
+# --- GLOBAL SETTINGS ---
+[all]
+# Disabling internal radios to force use of USB Dongle
+dtoverlay=disable-wifi
+dtoverlay=disable-bt
+
+# Hardware interfaces
+dtparam=spi=on
+dtparam=i2c_arm=on
+dtoverlay=spi1-3cs
+gpu_mem=16
+CONFIG_EOF
+
+# Add the i2c module for the screen
+echo "i2c-dev" >> /mnt/etc/modules
 
 echo "Unmounting and cleaning up..."
 umount /mnt/boot
