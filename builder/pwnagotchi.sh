@@ -249,43 +249,8 @@ for dir in /run /sys /proc /dev/pts /dev; do
     umount -l /mnt$dir
 done
 
-# --- Writing the Multi-Device Config ---
-cat <<CONFIG_EOF > /mnt/boot/config.txt
-# Standard Display/Audio Settings
-dtparam=audio=on
-
-# --- BOARD SPECIFIC FILTERS ---
-
-# Target: Pi Zero 2 W (All revisions)
-[board-type=0x902120]
-dtoverlay=dwc2,dr_mode=peripheral
-
-# Target: Pi 3B (Revision 1.2)
-[board-type=0xa02082]
-# No gadget mode here to keep eth0 safe
-
-# Target: Pi 3B+ (Revision 1.3)
-[board-type=0xa020d3]
-# No gadget mode here to keep eth0 safe
-
-# Target: Pi 4B (All RAM variants)
-[pi4]
-dtoverlay=vc4-fkms-v3d
-max_framebuffers=2
-
-# --- GLOBAL SETTINGS ---
-[all]
-# Disabling internal radios to force use of USB Dongle
-dtoverlay=disable-wifi
-dtoverlay=disable-bt
-
-# Hardware interfaces
-dtparam=spi=on
-dtparam=i2c_arm=on
-dtoverlay=spi1-3cs
-gpu_mem=16
-CONFIG_EOF
-
+# Disable onboard wifi
+echo "dtoverlay=disable-wifi" >> /mnt/boot/config.txt
 # Add the i2c module for the screen
 echo "i2c-dev" >> /mnt/etc/modules
 
