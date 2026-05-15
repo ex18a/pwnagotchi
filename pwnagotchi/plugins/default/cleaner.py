@@ -8,6 +8,12 @@ class Cleaner(plugins.Plugin):
     __author__ = 'ex18a'
     __version__ = '3.3.0'
 
+# Installation:
+# sudo apt-get update && sudo apt-get install libcurl4-openssl-dev libssl-dev zlib1g-dev pkg-config unzip -y
+# wget "https://github.com/ZerBea/hcxtools/archive/refs/tags/6.2.7.tar.gz" && tar -xvf 6.2.7.tar.gz && cd hcxtools-6.2.7 && make
+# sudo mv hcxpcapngtool /usr/bin/hcxpcapngtool && sudo chmod +x /usr/bin/hcxpcapngtool && cd ..
+# rm -rf hcxtools-6.2.7 6.2.7.tar.gz && sudo apt-get purge libcurl4-openssl-dev libssl-dev -y && sudo apt-get autoremove -y
+
     def __init__(self):
         self.handshake_dir = '/root/handshakes/'
 
