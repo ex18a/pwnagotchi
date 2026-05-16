@@ -158,13 +158,9 @@ echo "pi ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/010_pi-nopasswd
 sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/' /etc/ssh/sshd_config
 sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
 
-echo "Injecting official Pwnlib and Monitor scripts..."
+echo "Unpacking Pwnagotchi source for requirements..."
 mkdir -p /tmp/pwn_source
 tar -xzf /tmp/pwnagotchi-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
-cp /tmp/pwn_source/builder/data/usr/bin/monstart /usr/bin/monstart
-cp /tmp/pwn_source/builder/data/usr/bin/monstop /usr/bin/monstop
-cp /tmp/pwn_source/builder/data/usr/bin/pwnlib /usr/bin/pwnlib
-chmod +x /usr/bin/monstart /usr/bin/monstop /usr/bin/pwnlib
 
 echo "Installing Pwnagotchi dependencies..."
 # Clean up any failed build artifacts

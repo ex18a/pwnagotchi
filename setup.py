@@ -39,10 +39,15 @@ def install_system_files():
 
 
 def restart_services():
-    # reload systemd units
-    os.system("systemctl daemon-reload")
+    # Check if we are running inside a Docker container or chroot environment
+    # where systemd is not actively running as the init system.
+    if os.path.exists('/.dockerenv') or not os.path.isdir('/run/systemd/system'):
+        log.info("Running in a chroot/Docker build environment. Skipping systemctl commands.")
+        return
 
-    # for people updating https://github.com/evilsocket/pwnagotchi/pull/551/files
+    # Only reload systemd units if the OS is actually booted with systemd
+    log.info("Reloading systemd daemon...")
+    os.system("systemctl daemon-reload")
     os.system("systemctl enable fstrim.timer")
 
 
