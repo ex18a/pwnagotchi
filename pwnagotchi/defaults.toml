@@ -27,11 +27,11 @@ main.plugins.grid.exclude = [
 ]
 
 main.plugins.IPDisplay.enabled = false
-main.plugins.cleaner.enabled = false
+main.plugins.cleaner.enabled = true
 main.plugins.dev-ai-count.enabled = false
 main.plugins.dev-blind.enabled = false
 main.plugins.pisugar3i2c.enabled = false
-main.plugins.whitelist.enabled = false
+main.plugins.whitelist.enabled = true
 
 main.plugins.webgpsmap.enabled = false
 

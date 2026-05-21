@@ -148,6 +148,26 @@ cp -r /tmp/ui_temp/ui/* /usr/local/share/bettercap/ui/
 rm -rf /tmp/ui.zip /tmp/ui_temp
 chown -R root:root /usr/local/share/bettercap/ui
 
+echo "Installing build dependencies for hcxtools..."
+apt-get install -y --no-install-recommends libcurl4-openssl-dev libssl-dev
+
+echo "Downloading and compiling hcxtools v6.2.7..."
+cd /tmp
+curl -L "https://github.com/ZerBea/hcxtools/archive/refs/tags/6.2.7.tar.gz" -o 6.2.7.tar.gz
+tar -xvf 6.2.7.tar.gz
+cd hcxtools-6.2.7
+make
+
+echo "Moving hcxpcapngtool binary..."
+mv hcxpcapngtool /usr/bin/hcxpcapngtool
+chmod +x /usr/bin/hcxpcapngtool
+
+echo "Cleaning up hcxtools source and dev packages..."
+cd /
+rm -rf /tmp/hcxtools-6.2.7 /tmp/6.2.7.tar.gz
+apt-get purge -y libcurl4-openssl-dev libssl-dev
+apt-get autoremove -y
+
 echo "Creating passwordless user 'pi'..."
 if ! id "pi" &>/dev/null; then
     useradd -m -G sudo,video,input -s /bin/bash pi
