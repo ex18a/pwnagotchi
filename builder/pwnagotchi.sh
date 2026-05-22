@@ -74,9 +74,10 @@ echo " [*] Step 6: Injecting raw tarball runtime packages and QEMU emulator bina
 cp "$TARBALL" /mnt/tmp/
 cp /usr/bin/qemu-arm-static /mnt/usr/bin/
 
-echo " [*] Step 7: Profiling and stage-routing Nexmon driver assets..."
+echo " [*] Step 7: Profiling and stage-routing assets..."
 # Hardcoded to match the Makefile working directory mapping
 cp -r builder/assets/nexmon /mnt/tmp/nexmon
+cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
 
 echo " [*] Step 8: Fetching matching uncorrupted legacy kernel archives onto host workspace..."
 wget -q -O /mnt/tmp/raspberrypi-kernel.deb "http://archive.raspberrypi.org/debian/pool/main/r/raspberrypi-firmware/raspberrypi-kernel_1.20210527-1_armhf.deb"
@@ -123,7 +124,7 @@ dpkg -i /tmp/raspberrypi-kernel.deb /tmp/raspberrypi-kernel-headers.deb
 apt-mark hold raspberrypi-kernel raspberrypi-kernel-headers
 
 echo "  -> [Chroot] Fetching mandatory system core packages and library builds..."
-apt-get install -y --allow-unauthenticated --no-install-recommends \
+apt-get install -y --fix-missing --allow-unauthenticated --no-install-recommends \
     dkms python3 python3-pip python3-dev \
     build-essential pkg-config cmake unzip \
     libatlas-base-dev libgpiod-dev libxslt1-dev \
@@ -138,6 +139,13 @@ apt-get install -y --allow-unauthenticated --no-install-recommends \
 
 echo "  -> [Chroot] Purging redundant network and telemetry packages..."
 apt-get purge -y raspberrypi-net-mods dhcpcd5 triggerhappy nfs-common
+
+echo "  -> [Chroot] Generating UTF-8 Locales to fix encoding corruption..."
+apt-get install -y locales
+echo "en_GB.UTF-8 UTF-8" > /etc/locale.gen
+echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+locale-gen
+update-locale LANG=en_GB.UTF-8 LC_ALL=en_GB.UTF-8
 
 echo "  -> [Chroot] Fetching and deploying armhf Pwngrid binaries..."
 curl -L https://github.com/evilsocket/pwngrid/releases/download/v1.10.3/pwngrid_linux_armhf_v1.10.3.zip -o /tmp/pwngrid.zip
@@ -170,6 +178,9 @@ git clone https://github.com/bettercap/caplets.git /tmp/caplets
 cp -r /tmp/caplets/* /usr/local/share/bettercap/caplets/
 rm -rf /tmp/caplets
 
+echo "  -> [Chroot] Injecting custom pwnagotchi-manual.cap..."
+cp /tmp/bettercap_assets/pwnagotchi-manual.cap /usr/local/share/bettercap/caplets/pwnagotchi-manual.cap
+
 echo "  -> [Chroot] Stitching Bettercap Responsive Web Layout interface panels..."
 mkdir -p /usr/local/share/bettercap/ui
 curl -fL https://github.com/bettercap/ui/releases/download/v1.3.0/ui.zip -o /tmp/ui.zip
@@ -179,7 +190,7 @@ rm -rf /tmp/ui.zip /tmp/ui_temp
 chown -R root:root /usr/local/share/bettercap/ui
 
 echo "  -> [Chroot] Satisfying and building core hcxtools elements..."
-apt-get install -y --allow-unauthenticated --no-install-recommends libcurl4-openssl-dev libssl-dev
+apt-get install -y --fix-missing --allow-unauthenticated --no-install-recommends libcurl4-openssl-dev libssl-dev
 cd /tmp
 curl -L "https://github.com/ZerBea/hcxtools/archive/refs/tags/6.2.7.tar.gz" -o 6.2.7.tar.gz
 tar -xvf 6.2.7.tar.gz
@@ -312,6 +323,21 @@ cat <<MOTD_EOF > /etc/motd
 MOTD_EOF
 sed -i 's/#PrintMotd yes/PrintMotd yes/' /etc/ssh/sshd_config
 sed -i 's/PrintMotd no/PrintMotd yes/' /etc/ssh/sshd_config
+
+echo "  -> [Chroot] Seeding clean config.toml"
+mkdir -p /etc/pwnagotchi
+cat <<CONFIG_EOF > /etc/pwnagotchi/config.toml
+main.name = ""
+main.lang = "en"
+
+# Hardware Display Settings
+ui.display.enabled = true
+ui.display.rotation = 180
+ui.display.type = "waveshare_4"
+ui.display.color = "black"
+
+main.plugins.IPDisplay.enabled = true
+CONFIG_EOF
 
 echo "  -> [Chroot] Installing Hardware Auto-Gadget for zero2w..."
 cat <<'GADGET_EOF' > /usr/local/bin/hw-gadget.sh

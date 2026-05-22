@@ -21,7 +21,7 @@ main.plugins.grid.exclude = [
   "YourHomeNetworkHere"
 ]
 
-main.plugins.IPDisplay.enabled = true
+main.plugins.IPDisplay.enabled = false
 main.plugins.cleaner.enabled = true
 main.plugins.dev-ai-count.enabled = false
 main.plugins.dev-blind.enabled = false
@@ -170,7 +170,7 @@ ui.web.origin = ""
 ui.web.port = 8080
 ui.web.on_frame = ""
 
-ui.display.enabled = true
+ui.display.enabled = false
 ui.display.rotation = 180
 ui.display.type = "waveshare_4"
 ui.display.color = "black"
