@@ -20,11 +20,12 @@ image:
 
 	@echo "--- Starting Docker Build for $(PWN_RELEASE) ---"
 	sudo docker run --privileged --rm -it \
+		--dns=8.8.8.8 \
 		-v /dev:/dev \
 		-v /lib/modules:/lib/modules \
 		-v $(shell pwd):/build \
 		-w /build \
-		debian:bookworm /bin/bash -c "./builder/pwnagotchi.sh $(PWN_VERSION) $(PWN_HOSTNAME)"
+		debian:bookworm /bin/bash -c "echo 'Acquire::ForceIPv4 \"true\";' > /etc/apt/apt.conf.d/99force-ipv4 && ./builder/pwnagotchi.sh $(PWN_VERSION) $(PWN_HOSTNAME)"
 
 	@echo "--- SUCCESS ---"
 	@echo "Build complete. Image found in dist/$(PWN_RELEASE).img"
@@ -32,5 +33,7 @@ image:
 clean:
 	@echo "Cleaning up previous build artifacts..."
 	-python3 setup.py clean --all
-	-rm -rf dist pwnagotchi.egg-info
+	-rm -rf pwnagotchi.egg-info
 	-sudo rm -rf builder/output-pwnagotchi builder/packer_cache
+	@# FIXED: Delete everything in dist EXCEPT base OS image
+	-find dist -type f ! -name 'base_32.img' -delete 2>/dev/null || true
