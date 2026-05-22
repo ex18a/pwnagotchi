@@ -30,7 +30,7 @@ class PiSugar3i2c(plugins.Plugin):
                 color=BLACK,
                 label="",
                 value="BAT",
-                position=(ui.width() / 2 + 10, 0),
+                position=(ui.width() / 2 + 5, 0),
                 label_font=fonts.Bold,
                 text_font=fonts.Bold,
             ),
@@ -41,7 +41,7 @@ class PiSugar3i2c(plugins.Plugin):
                 color=BLACK,
                 label="",
                 value="0%",
-                position=(ui.width() / 2 + 45, 0),
+                position=(ui.width() / 2 + 25, 0),
                 label_font=fonts.Bold,
                 text_font=fonts.Medium,
             ),
@@ -98,3 +98,4 @@ class PiSugar3i2c(plugins.Plugin):
                     ui.remove_element(element)
                 except:
                     pass
+
