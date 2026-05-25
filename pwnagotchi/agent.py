@@ -5,6 +5,7 @@ import re
 import logging
 import asyncio
 import _thread
+import glob
 
 import pwnagotchi
 import pwnagotchi.utils as utils
@@ -252,6 +253,36 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             self._view.set('aps', '%d (%d)' % (self._aps_on_channel, self._tot_aps))
             self._view.set('sta', '%d (%d)' % (stas_on_channel, tot_stas))
 
+    def _get_historical_last_pwnd(self):
+        try:
+            handshake_dir = self._config['bettercap']['handshakes']
+            if not os.path.exists(handshake_dir):
+                return None
+
+            # Use glob to find ONLY .pcap files in /root/handshakes
+            files = glob.glob(os.path.join(handshake_dir, '*.pcap'))
+            if not files:
+                return None
+
+            # Sort files by modification time to find the absolute newest one
+            newest_file = max(files, key=os.path.getmtime)
+            filename = os.path.basename(newest_file)
+
+            # Strip the .pcap extension
+            name_part, _ = os.path.splitext(filename)
+
+            # Split by underscore and drop the trailing MAC address element
+            if '_' in name_part:
+                parts = name_part.split('_')
+                if len(parts) > 1:
+                    return '_'.join(parts[:-1])
+
+            return name_part
+        except Exception as e:
+            import logging
+            logging.debug(f"[UI System] Could not read last handshake from disk: {e}")
+            return None
+
     def _update_handshakes(self, new_shakes=0):
         if new_shakes > 0:
             self._epoch.track(handshake=True, inc=new_shakes)
@@ -259,10 +290,33 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         tot = utils.total_unique_handshakes(self._config['bettercap']['handshakes'])
         txt = '%d (%d)' % (len(self._handshakes), tot)
 
-        if self._last_pwnd is not None:
-            txt += ' [%s]' % self._last_pwnd[:20]
-
+        # Update the main shakes element (the bold PWND part)
         self._view.set('shakes', txt)
+
+        # --- DYNAMIC POSITIONING ---
+        try:
+            # 1. Grab the fixed starting coordinates of the main 'shakes' element
+            shakes_x, shakes_y = self._view._state._state['shakes'].xy
+
+            # 2. Calculate the exact width of the text
+            # numbers are ~6px per character.
+            dynamic_offset = 32 + (len(txt) * 6)
+
+            # 3. Slide the network name over dynamically so it perfectly dodges the numbers
+            self._view._state._state['last_pwnd_name'].xy = (shakes_x + dynamic_offset, shakes_y)
+        except Exception:
+            pass
+        # ---------------------------------
+
+        # If just booted and have no session captures yet, look at the disk
+        if self._last_pwnd is None:
+            self._last_pwnd = self._get_historical_last_pwnd()
+
+        # Update for the WiFi name
+        if self._last_pwnd is not None:
+            self._view.set('last_pwnd_name', '[%s]' % self._last_pwnd)
+        else:
+            self._view.set('last_pwnd_name', '')
 
         if new_shakes > 0:
             self._view.on_handshakes(new_shakes)

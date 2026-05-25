@@ -238,6 +238,8 @@ python3 -m pip install --ignore-installed \
 python3 -m pip install --no-deps /tmp/pwnagotchi-${VERSION}.tar.gz
 mkdir -p /usr/local/share/pwnagotchi/custom-plugins/
 
+echo 'export LANG=en_GB.UTF-8' >> /home/pi/.bashrc
+echo 'export LC_ALL=en_GB.UTF-8' >> /home/pi/.bashrc
 echo "alias pwnlog='tail -f -n300 /var/log/pwn*.log | sed --unbuffered \"s/,[[:digit:]]\\\\{3\\\\}\\\\]//g\" | cut -d \" \" -f 2-'" >> /home/pi/.bashrc
 chown pi:pi /home/pi/.bashrc
 
