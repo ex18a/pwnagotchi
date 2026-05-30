@@ -7,7 +7,7 @@ import logging
 
 class BlindCount(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.4'
+    __version__ = '1.0.5'
     __description__ = 'Pulls blind count from log lines containing blind='
 
     def on_loaded(self):
@@ -15,8 +15,8 @@ class BlindCount(plugins.Plugin):
         logging.info("[BlindCount] Watcher loaded.")
 
     def on_ui_setup(self, ui):
-        ui.add_element('blind_val', LabeledValue(color=BLACK, label='BLIND', value='0',
-                                                 position=(55, 80),
+        ui.add_element('blind_val', LabeledValue(color=BLACK, label='BLIND ', value='0',
+                                                 position=(110, 80),
                                                  label_font=fonts.Bold, text_font=fonts.Small))
 
     def on_ui_update(self, ui):

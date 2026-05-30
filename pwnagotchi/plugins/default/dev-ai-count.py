@@ -6,9 +6,9 @@ import json
 import os
 import logging
 
-class dev-ai-count(plugins.Plugin):
+class DevAiCount(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.0'
+    __version__ = '1.0.1'
     __description__ = 'Displays lifetime epochs trained from brain.json'
 
     def on_loaded(self):
@@ -30,9 +30,9 @@ class dev-ai-count(plugins.Plugin):
 
     def on_ui_setup(self, ui):
         # Positioned near the bottom, adjust (x, y) as needed for your screen
-        ui.add_element('lifetime_train', LabeledValue(color=BLACK, label='AGE:', value='0',
-                                                       position=(120, 90),
-                                                       label_font=fonts.Small, text_font=fonts.Small))
+        ui.add_element('lifetime_train', LabeledValue(color=BLACK, label='AGE', value='0',
+                                                       position=(110, 90),
+                                                       label_font=fonts.Bold, text_font=fonts.Small))
 
     def on_ui_update(self, ui):
         # Refresh the count from the file every time the UI updates
