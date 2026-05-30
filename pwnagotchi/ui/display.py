@@ -13,7 +13,8 @@ class Display(View):
         config = config['ui']['display']
 
         self._enabled = config['enabled']
-        self._rotation = config['rotation']
+#       self._rotation = config['rotation']
+        self._rotation = config.get('rotation', 0)
 
         self.init_display()
 

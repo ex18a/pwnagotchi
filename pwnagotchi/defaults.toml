@@ -171,7 +171,7 @@ ui.web.port = 8080
 ui.web.on_frame = ""
 
 ui.display.enabled = false
-ui.display.rotation = 180
+ui.display.orientation = 90
 ui.display.type = "waveshare_4"
 ui.display.color = "black"
 

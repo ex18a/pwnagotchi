@@ -383,7 +383,7 @@ main.lang = "en"
 
 # Hardware Display Settings
 ui.display.enabled = true
-ui.display.rotation = 180
+ui.display.orientation = 90
 ui.display.type = "waveshare_4"
 ui.display.color = "black"
 
