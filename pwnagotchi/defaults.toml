@@ -136,8 +136,8 @@ ui.fps = 0.0
 ui.font.name = "DejaVuSansMono" # for japanese: fonts-japanese-gothic
 ui.font.size_offset = 0 # will be added to the font size
 
-ui.faces.look_r = ["( ⚆_⚆)", "( ☉_⊙)", "( ●_●)", "( °_°)", "( ◕_◕)", "( ∞_∞)"]
-ui.faces.look_l = ["(☉_☉ )", "(⊙_☉ )", "(●_● )", "(°_° )", "(◕_◕ )", "(∞_∞ )"]
+ui.faces.look_r = ["( ⚆_⚆)", "( ◕_◕)"]
+ui.faces.look_l = ["(☉_☉ )", "(◕_◕ )"]
 ui.faces.look_r_happy = ["( ◕‿◕)", "( ≧◡≦)"]
 ui.faces.look_l_happy = ["(◕‿◕ )", "(≧◡≦ )"]
 ui.faces.sleep = "(⇀‿‿↼)"

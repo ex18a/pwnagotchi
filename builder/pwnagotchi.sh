@@ -89,6 +89,8 @@ sed -i 's/$/ modules-load=dwc2,g_ether/' /mnt/boot/cmdline.txt
 # Enable SPI and I2C hardware buses for the Waveshare screen
 echo "dtparam=spi=on" >> /mnt/boot/config.txt
 echo "dtparam=i2c_arm=on" >> /mnt/boot/config.txt
+# Enable RTC for PiSugar
+echo "dtoverlay=i2c-rtc,ds3231" >> /mnt/boot/config.txt
 
 # ==============================================================================
 # PHASE 4: INTERNAL ISOLATED CHROOT EMULATION CONFIGURATION
@@ -115,6 +117,14 @@ cat <<REPO_EOF > /etc/apt/sources.list.d/raspi.list
 deb [trusted=yes] http://archive.raspberrypi.org/debian/ buster main
 REPO_EOF
 
+echo "  -> [Chroot] Configuring APT to auto-retry and ignore legacy expiration..."
+cat << 'APT_EOF' > /etc/apt/apt.conf.d/99-legacy-apt
+Acquire::Retries "5";
+Acquire::http::Timeout "30";
+Acquire::ftp::Timeout "30";
+Acquire::Check-Valid-Until "false";
+APT_EOF
+
 # Synchronize package arrays bypassing expired repository checks
 apt-get update -o Acquire::Check-Valid-Until=false || true
 apt-get update --allow-unauthenticated -y
@@ -125,7 +135,8 @@ apt-mark hold raspberrypi-kernel raspberrypi-kernel-headers
 
 echo "  -> [Chroot] Fetching mandatory system core packages and library builds..."
 apt-get install -y --fix-missing --allow-unauthenticated --no-install-recommends \
-    dkms python3 python3-pip python3-dev \
+    dkms python3 python3-pip \
+    python3-dev python3-smbus \
     build-essential pkg-config cmake unzip \
     libatlas-base-dev libgpiod-dev libxslt1-dev \
     libxml2-dev zlib1g-dev \
@@ -135,10 +146,42 @@ apt-get install -y --fix-missing --allow-unauthenticated --no-install-recommends
     fonts-dejavu fonts-freefont-ttf \
     libavcodec58 libavformat58 libswscale5 \
     libv4l-0 libxvidcore4 libx264-155 \
-    libgtk-3-0 libatlas3-base
+    libgtk-3-0 libatlas3-base \
+    network-manager jq
 
 echo "  -> [Chroot] Purging redundant network and telemetry packages..."
 apt-get purge -y raspberrypi-net-mods dhcpcd5 triggerhappy nfs-common
+
+echo "  -> [Chroot] Locking NetworkManager to ignore WiFi interfaces..."
+mkdir -p /etc/NetworkManager/conf.d/
+cat << 'NM_EOF' > /etc/NetworkManager/conf.d/99-unmanaged.conf
+[keyfile]
+unmanaged-devices=type:wifi;interface-name:wlan*;interface-name:mon*;interface-name:usb*
+NM_EOF
+
+echo "  -> [Chroot] Installing Event-Driven RTC Sync..."
+
+# Create the NetworkManager dispatcher script
+cat << 'RTC_EOF' > /etc/NetworkManager/dispatcher.d/99-rtc-sync
+#!/bin/bash
+# This script is triggered automatically by NetworkManager when a connection changes
+
+INTERFACE=\$1
+ACTION=\$2
+
+# Did a network interface just connect?
+if [ "\$ACTION" = "up" ]; then
+    # 2. Does RTC Hardware exist?
+    if [ -e /dev/rtc0 ]; then
+        sleep 15
+        # Write the newly synced OS time into the RTC chip
+        hwclock -w
+    fi
+fi
+RTC_EOF
+
+# Dispatcher scripts must be executable to run
+chmod +x /etc/NetworkManager/dispatcher.d/99-rtc-sync
 
 echo "  -> [Chroot] Generating UTF-8 Locales to fix encoding corruption..."
 apt-get install -y locales
@@ -292,11 +335,16 @@ systemctl enable bettercap.service
 systemctl enable pwnagotchi.service
 systemctl enable pwngrid-peer.service
 systemctl enable fstrim.timer
-systemctl disable apt-daily.timer apt-daily.service apt-daily-upgrade.timer wpa_supplicant.service dnsmasq.service
+systemctl enable NetworkManager-dispatcher.service
+systemctl disable apt-daily.timer apt-daily.service apt-daily-upgrade.timer wpa_supplicant.service
 rm -f /etc/ssh/ssh_host*_key*
 
+
+# Define raw escape color sequences inside the chroot
+GREEN=\$(printf '\033[0;32m')
+NC=\$(printf '\033[0m')
 cat <<MOTD_EOF > /etc/motd
-        (◕‿‿◕) $HOSTNAME
+\${GREEN}        (◕‿‿◕) $HOSTNAME
 
         Hi! I'm a pwnagotchi, please take good care of me!
         Here are some basic things you need to know to raise me properly!
@@ -305,6 +353,8 @@ cat <<MOTD_EOF > /etc/motd
 
         All the configuration options can be found on /etc/pwnagotchi/default.toml,
         but don't change this file because I will recreate it every time I'm restarted!
+
+        you can set up bluetooth connection, use sudo bt-wizard
 
         I'm managed by systemd. Here are some basic commands.
 
@@ -320,8 +370,7 @@ cat <<MOTD_EOF > /etc/motd
         But be aware I will go into MANUAL mode when restarted!
         You can put me back into AUTO mode using
         touch /root/.pwnagotchi-auto && systemctl restart pwnagotchi
-
-        You learn more about me at https://pwnagotchi.ai/
+        \${NC}
 MOTD_EOF
 sed -i 's/#PrintMotd yes/PrintMotd yes/' /etc/ssh/sshd_config
 sed -i 's/PrintMotd no/PrintMotd yes/' /etc/ssh/sshd_config
@@ -366,8 +415,94 @@ chmod +x /usr/local/bin/hw-gadget.sh
 # Tell the system to run the auto-gadget every time the OS boots
 sed -i 's|^exit 0|/usr/local/bin/hw-gadget.sh\nexit 0|' /etc/rc.local
 
+echo "  -> [Chroot] Installing Bluetooth Tethering Wizard..."
+cat << 'BT_EOF' > /usr/local/bin/bt-wizard
+#!/bin/bash
+
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo -e "\${CYAN}==========================================\${NC}"
+echo -e "\${CYAN}   Pwnagotchi Bluetooth Tethering Wizard  \${NC}"
+echo -e "\${CYAN}==========================================\${NC}"
+
+if [ "\$EUID" -ne 0 ]; then
+  echo -e "\${RED}[!] Please run this script with sudo:\${NC} sudo \$0"
+  exit 1
+fi
+
+read -p "Enter your phones bluetooth name for this connection (e.g., MyPhone): " BT_NAME
+if [ -z "\$BT_NAME" ]; then
+    echo -e "\${RED}[!] Connection name cannot be empty. Exiting.\${NC}"
+    exit 1
+fi
+
+read -p "Enter your phone's Bluetooth MAC Address (e.g., AA:BB:CC:DD:EE:FF): " RAW_MAC
+if [ -z "\$RAW_MAC" ]; then
+    echo -e "\${RED}[!] MAC Address cannot be empty. Exiting.\${NC}"
+    exit 1
+fi
+
+BT_MAC=\$(echo "\$RAW_MAC" | tr 'a-z' 'A-Z')
+
+echo -e "\n\${YELLOW}[*] Configuring connection '\${BT_NAME}' for MAC: \${BT_MAC}...\${NC}"
+
+echo -e "\${YELLOW}[*] Adding NetworkManager profile...\${NC}"
+nmcli connection add con-name "\$BT_NAME" \
+  ifname "*" \
+  type bluetooth bt-type panu \
+  bluetooth.bdaddr "\$BT_MAC" \
+  connection.autoconnect yes \
+  connection.autoconnect-retries 0 \
+  ipv4.method auto \
+  ipv4.dns "8.8.8.8 1.1.1.1" \
+  ipv4.route-metric 200 > /dev/null
+
+echo -e "\${YELLOW}[*] Creating bt-agent systemd service...\${NC}"
+cat << 'SERVICE_EOF' > /etc/systemd/system/bt-agent.service
+[Unit]
+Description=Bluetooth Agent (NoInputNoOutput)
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/bluetoothctl power on
+ExecStartPre=/usr/bin/bluetoothctl discoverable on
+ExecStartPre=/usr/bin/bluetoothctl pairable on
+ExecStart=/usr/bin/bt-agent -c NoInputNoOutput
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+echo -e "\${YELLOW}[*] Starting Bluetooth agent service...\${NC}"
+systemctl daemon-reload
+systemctl enable bt-agent > /dev/null 2>&1
+systemctl start bt-agent
+
+echo -e "\${YELLOW}[*] Trusting MAC address \${BT_MAC} in bluetoothctl...\${NC}"
+bluetoothctl trust "\$BT_MAC" > /dev/null
+
+echo -e "\n\${GREEN}[+] Setup Complete!\${NC}"
+echo -e "\${CYAN}==========================================\${NC}"
+echo -e "To finish the connection:"
+echo -e "  1. Open Bluetooth settings on your phone."
+echo -e "  2. Find 'Pwnagotchi' and tap to Pair (it will succeed automatically)."
+echo -e "  3. Turn on 'Bluetooth Tethering' / 'Personal Hotspot' on your phone."
+echo -e "  4. Ensure the Pi has permission to use your phone's internet."
+echo -e "\${CYAN}==========================================\${NC}"
+BT_EOF
+
+chmod +x /usr/local/bin/bt-wizard
+
 # ==============================================================================
-# AGGRESSIVE INTERNAL CLEANUP (REDUCES IMAGE CAPACITY FOOTPRINT)
+# INTERNAL CLEANUP (REDUCES IMAGE CAPACITY FOOTPRINT)
 # ==============================================================================
 echo "  -> [Chroot] Starting storage scrubbing cycle (removing junk)..."
 rm -rf /tmp/* /root/.cache /var/cache/apt/archives/*
