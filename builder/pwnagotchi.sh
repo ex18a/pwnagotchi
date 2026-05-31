@@ -388,6 +388,8 @@ ui.display.type = "waveshare_4"
 ui.display.color = "black"
 
 main.plugins.IPDisplay.enabled = true
+main.plugins.portrait-mode.enabled = true
+
 CONFIG_EOF
 
 echo "  -> [Chroot] Installing Hardware Auto-Gadget for zero2w..."

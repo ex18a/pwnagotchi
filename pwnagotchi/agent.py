@@ -293,17 +293,24 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         # Update the main shakes element (the bold PWND part)
         self._view.set('shakes', txt)
 
-        # --- DYNAMIC POSITIONING ---
+# --- DYNAMIC POSITIONING ---
         try:
             # 1. Grab the fixed starting coordinates of the main 'shakes' element
             shakes_x, shakes_y = self._view._state._state['shakes'].xy
 
-            # 2. Calculate the exact width of the text
-            # numbers are ~6px per character.
-            dynamic_offset = 32 + (len(txt) * 6)
+            # 2. AUTO-DETECT PORTRAIT MODE
+            if self._view._width == 122:
+                # We are in Portrait Mode!
+                # Skip the horizontal math so the plugin's new line coordinates stay safe!
+                pass
+            else:
+                # We are in standard Landscape Mode!
+                # Calculate the exact width of the text (~6px per character)
+                dynamic_offset = 32 + (len(txt) * 6)
 
-            # 3. Slide the network name over dynamically so it perfectly dodges the numbers
-            self._view._state._state['last_pwnd_name'].xy = (shakes_x + dynamic_offset, shakes_y)
+                # Slide the network name over dynamically so it perfectly dodges the numbers
+                self._view._state._state['last_pwnd_name'].xy = (shakes_x + dynamic_offset, shakes_y)
+
         except Exception:
             pass
         # ---------------------------------
