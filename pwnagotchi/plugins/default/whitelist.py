@@ -5,21 +5,27 @@ import pwnagotchi.plugins as plugins
 
 class Whitelist(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '2.1.0'
-    __description__ = 'Scans handshakes for validated pairs, writes to /root/whitelist, and injects to runtime.'
+    __version__ = '2.4.0'
+    __description__ = 'Harvests MACs/SSIDs, syncs with HashVault, supports case-sensitive SSIDs, and safely blanks memory on unload.'
 
     def __init__(self):
-        self.original_whitelist = []
         self.whitelist_path = '/root/whitelist'
         self.handshake_dir = '/root/handshakes/'
+        self.hash_dir = os.path.join(self.handshake_dir, 'hashes')
 
     def on_loaded(self):
-        # Ensure the file exists right at boot time
         self._ensure_whitelist_file_exists()
 
-        # Capture the vanilla config state to revert safely on unload
-        self.original_whitelist = list(pwnagotchi.config['main']['whitelist'])
-        logging.info(f"[whitelist] Loaded. Original whitelist size: {len(self.original_whitelist)}")
+        # Harvest manual MACs or SSIDs currently sitting in the config.toml
+        config_entries = pwnagotchi.config['main'].get('whitelist', [])
+        if config_entries:
+            logging.info(f"[whitelist] Found entries in config.toml. Moving them to physical file.")
+            self._harvest_config_entries(config_entries)
+
+        # Clear the runtime config so we start fresh
+        pwnagotchi.config['main']['whitelist'] = []
+
+        logging.info("[whitelist] Plugin active. Syncing with HashVault...")
         self._process_and_sync()
 
     def on_epoch(self, agent, epoch_data):
@@ -37,43 +43,71 @@ class Whitelist(plugins.Plugin):
         except Exception as e:
             logging.error(f"[whitelist] Error creating whitelist file: {e}")
 
+    def _harvest_config_entries(self, config_entries):
+        self._ensure_whitelist_file_exists()
+        try:
+            with open(self.whitelist_path, 'r') as f:
+                # Read existing without forcing lowercase!
+                existing_entries = [line.split('#')[0].strip() for line in f if line.strip()]
+
+            added = False
+            with open(self.whitelist_path, 'a') as f:
+                for entry in config_entries:
+                    clean_entry = entry.strip()
+
+                    # If it's a MAC address, lowercase it for safety. If it's an SSID, leave the capitals alone!
+                    if ':' in clean_entry:
+                        clean_entry = clean_entry.lower()
+
+                    if clean_entry and clean_entry not in existing_entries:
+                        f.write(f"{clean_entry} # Manual_Config_Entry\n")
+                        existing_entries.append(clean_entry)
+                        added = True
+
+            if added:
+                logging.info("[whitelist] Successfully saved manual config entries into /root/whitelist.")
+        except Exception as e:
+            logging.error(f"[whitelist] Error harvesting config entries: {e}")
+
     def _process_and_sync(self):
-        # 1. Scan the folder and build the physical text file
         self._scan_handshakes_for_whitelist()
-        # 2. Inject whatever is inside that text file into memory
         self._inject_into_runtime()
 
     def _scan_handshakes_for_whitelist(self):
-        if not os.path.exists(self.handshake_dir):
+        if not os.path.exists(self.hash_dir):
             return
 
-        # Look for valid pairs (.pcap + .22000)
-        for filename in os.listdir(self.handshake_dir):
+        for filename in os.listdir(self.hash_dir):
             if filename.endswith('.22000'):
                 pcap_file = filename.replace('.22000', '.pcap')
-                if os.path.exists(os.path.join(self.handshake_dir, pcap_file)):
+                pcap_path = os.path.join(self.handshake_dir, pcap_file)
+                hash_path = os.path.join(self.hash_dir, filename)
+
+                if os.path.exists(pcap_path) and os.path.exists(hash_path):
                     self._extract_and_append_mac(filename)
 
     def _extract_and_append_mac(self, hash_filename):
         try:
-            # Extract MAC from filename structure: Name_MAC.22000
             clean_name = hash_filename.replace('.22000', '')
-            parts = clean_name.split('_')
-            if len(parts) >= 2:
-                raw_mac = parts[-1].lower()
+            parts = clean_name.rsplit('_', 1)
+
+            if len(parts) == 2:
+                network_name = parts[0]
+                raw_mac = parts[1].lower()
+
                 if len(raw_mac) == 12:
                     formatted_mac = ":".join(raw_mac[i:i+2] for i in range(0, 12, 2))
 
                     self._ensure_whitelist_file_exists()
 
-                    # Read and check if already documented
                     with open(self.whitelist_path, 'r') as f:
-                        lines = f.read().splitlines()
+                        # Grab only the first parts for the duplicate check
+                        existing_entries = [line.split('#')[0].strip() for line in f if line.strip()]
 
-                    if formatted_mac not in lines:
+                    if formatted_mac not in existing_entries:
                         with open(self.whitelist_path, 'a') as f:
-                            f.write(f"{formatted_mac}\n")
-                        logging.info(f"[whitelist] Logged new verified MAC: {formatted_mac}")
+                            f.write(f"{formatted_mac} # {network_name}\n")
+                        logging.info(f"[whitelist] Logged new verified MAC: {formatted_mac} ({network_name})")
         except Exception as e:
             logging.error(f"[whitelist] MAC Extraction error: {e}")
 
@@ -82,21 +116,24 @@ class Whitelist(plugins.Plugin):
 
         try:
             with open(self.whitelist_path, 'r') as f:
-                external_macs = [line.strip().lower() for line in f if line.strip()]
+                # Read lines, do NOT force lowercase here so SSIDs retain their capitals!
+                external_entries = [line.split('#')[0].strip() for line in f if line.strip() and not line.strip().startswith('#')]
 
-            if external_macs:
+            external_entries = [m for m in external_entries if m]
+
+            if external_entries:
                 current_config = pwnagotchi.config['main']['whitelist']
                 added_count = 0
-                for mac in external_macs:
-                    if mac not in current_config:
-                        current_config.append(mac)
+                for entry in external_entries:
+                    if entry not in current_config:
+                        current_config.append(entry)
                         added_count += 1
 
                 if added_count > 0:
-                    logging.info(f"[whitelist] Injected {added_count} new MACs into runtime.")
+                    logging.info(f"[whitelist] Injected {added_count} verified entries into runtime.")
         except Exception as e:
             logging.error(f"[whitelist] Sync error: {e}")
 
     def on_unload(self, ui):
-        logging.info("[whitelist] Restoring original whitelist...")
-        pwnagotchi.config['main']['whitelist'] = list(self.original_whitelist)
+        logging.info("[whitelist] Plugin disabled. Wiping the runtime whitelist completely blank...")
+        pwnagotchi.config['main']['whitelist'] = []
