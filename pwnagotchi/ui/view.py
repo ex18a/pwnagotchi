@@ -137,6 +137,16 @@ class View(object):
     def set(self, key, value):
         self._state.set(key, value)
 
+    def set(self, key, value):
+        # --- NATIVE STATUS LOGGER ---
+        if key == 'status':
+            if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
+                import logging
+                logging.info(f"[STATUS] {value}")
+                self._last_logged_status = value
+        # ----------------------------
+        self._state.set(key, value)
+
     def get(self, key):
         return self._state.get(key)
 
