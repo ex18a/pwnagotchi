@@ -389,6 +389,9 @@ ui.display.color = "black"
 
 main.plugins.IPDisplay.enabled = true
 main.plugins.portrait-mode.enabled = true
+main.plugins.hashvault.enabled = true
+main.plugins.whitelist.enabled = true
+
 
 CONFIG_EOF
 

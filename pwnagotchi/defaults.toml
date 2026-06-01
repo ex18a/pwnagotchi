@@ -8,8 +8,8 @@ main.custom_plugin_repos = [
 main.iface = "mon0"
 main.mon_start_cmd = "/usr/bin/monstart"
 main.mon_stop_cmd = "/usr/bin/monstop"
-main.mon_max_blind_epochs = 0
-main.no_restart = true
+main.mon_max_blind_epochs = 50
+main.no_restart = false
 main.whitelist = []
 main.filter = ""
 
@@ -23,11 +23,12 @@ main.plugins.grid.exclude = [
 
 main.plugins.portrait-mode.enabled = false
 main.plugins.IPDisplay.enabled = false
-main.plugins.cleaner.enabled = false
+main.plugins.hashvault.enabled = false
 main.plugins.dev-ai-count.enabled = false
 main.plugins.dev-blind.enabled = false
 main.plugins.pisugar3i2c.enabled = false
 main.plugins.whitelist.enabled = false
+main.plugins.face_only.enabled = false
 
 main.plugins.webgpsmap.enabled = false
 
@@ -165,8 +166,8 @@ ui.faces.upload2 = "(0__1)"
 
 ui.web.enabled = true
 ui.web.address = "0.0.0.0"
-ui.web.username = "changeme"
-ui.web.password = "changeme"
+ui.web.username = "pwnagotchi"
+ui.web.password = "pwnagotchi"
 ui.web.origin = ""
 ui.web.port = 8080
 ui.web.on_frame = ""
