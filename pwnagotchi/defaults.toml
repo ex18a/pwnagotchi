@@ -8,8 +8,8 @@ main.custom_plugin_repos = [
 main.iface = "mon0"
 main.mon_start_cmd = "/usr/bin/monstart"
 main.mon_stop_cmd = "/usr/bin/monstop"
-main.mon_max_blind_epochs = 10
-main.no_restart = false
+main.mon_max_blind_epochs = 0
+main.no_restart = true
 main.whitelist = []
 main.filter = ""
 
