@@ -166,16 +166,25 @@ cat << 'RTC_EOF' > /etc/NetworkManager/dispatcher.d/99-rtc-sync
 #!/bin/bash
 # This script is triggered automatically by NetworkManager when a connection changes
 
-INTERFACE=\$1
-ACTION=\$2
+INTERFACE=$1
+ACTION=$2
 
 # Did a network interface just connect?
-if [ "\$ACTION" = "up" ]; then
-    # 2. Does RTC Hardware exist?
+if [ "$ACTION" = "up" ]; then
+    # Does RTC Hardware exist?
     if [ -e /dev/rtc0 ]; then
-        sleep 15
-        # Write the newly synced OS time into the RTC chip
-        hwclock -w
+        # Run in a background subshell so we do not block NetworkManager
+        (
+            # Loop for up to 60 seconds waiting for a verified NTP sync
+            for i in {1..12}; do
+                if timedatectl status | grep -q "System clock synchronized: yes"; then
+                    # The OS time is officially accurate. Write it to the RTC chip.
+                    /sbin/hwclock -w
+                    exit 0
+                fi
+                sleep 5
+            done
+        ) &
     fi
 fi
 RTC_EOF
