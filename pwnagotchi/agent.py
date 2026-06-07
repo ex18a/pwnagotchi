@@ -370,8 +370,20 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def start_session_fetcher(self):
         _thread.start_new_thread(self._fetch_stats, ())
 
-
     def _fetch_stats(self):
+        # --- NATIVE HOME PAUSE INITIALIZATION ---
+        cache_path = '/etc/pwnagotchi/home_paused_cache.json'
+        home_detected = False
+
+        # Pull the existing array directly from your config
+        whitelist = self._config.get('main', {}).get('whitelist', [])
+
+        # Pause AI immediately on boot if a whitelist is configured
+        if whitelist:
+            logging.info("[AGENT] Boot-Lock enabled via main.whitelist targets. Assuming home until proven otherwise.")
+            self._config['ai']['laziness'] = 1.0
+            home_detected = True
+
         while True:
             s = self.session()
             self._update_uptime(s)
@@ -379,6 +391,56 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             self._update_peers()
             self._update_counters()
             self._update_handshakes(0)
+
+            # --- NATIVE HOME PAUSE ENGINE ---
+            if whitelist and 'wifi' in s and 'aps' in s['wifi']:
+                found = any(
+                    ap.get('hostname') in whitelist or
+                    ap.get('mac', '').lower() in [w.lower() for w in whitelist]
+                    for ap in s['wifi']['aps']
+                )
+
+                if found:
+                    if not home_detected:
+                        logging.info("[AGENT] Whitelisted network detected. Parking AI execution.")
+                        home_detected = True
+
+                        live_laz = self._config.get('ai', {}).get('laziness', 0.1)
+                        if live_laz != 1.0:
+                            try:
+                                with open(cache_path, 'w') as f:
+                                    json.dump({'runtime_laziness': live_laz}, f)
+                            except Exception as e:
+                                logging.error(f"[core] Cache write error: {e}")
+
+                        self._config['ai']['laziness'] = 1.0
+
+                else:
+                    if home_detected:
+                        logging.info("[AGENT] Whitelisted networks cleared from environment. Resuming AI.")
+                        home_detected = False
+
+                        restored_laz = 0.1
+                        if os.path.exists(cache_path):
+                            try:
+                                with open(cache_path, 'r') as f:
+                                    restored_laz = json.load(f).get('runtime_laziness', 0.1)
+                            except Exception:
+                                pass
+
+                        self._config['ai']['laziness'] = restored_laz
+
+            # Rule: If actively learning (50/50 block), show AI. Otherwise, show AUTO.
+            try:
+                if hasattr(self, 'is_training') and self.is_training():
+                    self.mode = 'ai'
+                    self._view.set('mode', '  AI')
+                else:
+                    self.mode = 'auto'
+                    self._view.set('mode', 'AUTO')
+            except Exception:
+                pass
+
             time.sleep(1)
 
     async def _on_event(self, msg):
