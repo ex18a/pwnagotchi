@@ -78,6 +78,7 @@ echo " [*] Step 7: Profiling and stage-routing assets..."
 # Hardcoded to match the Makefile working directory mapping
 cp -r builder/assets/nexmon /mnt/tmp/nexmon
 cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
+cp -r builder/assets/networkmanger /mnt/tmp/networkmanager
 
 echo " [*] Step 8: Fetching matching uncorrupted legacy kernel archives onto host workspace..."
 wget -q -O /mnt/tmp/raspberrypi-kernel.deb "http://archive.raspberrypi.org/debian/pool/main/r/raspberrypi-firmware/raspberrypi-kernel_1.20210527-1_armhf.deb"
@@ -152,45 +153,19 @@ apt-get install -y --fix-missing --allow-unauthenticated --no-install-recommends
 echo "  -> [Chroot] Purging redundant network and telemetry packages..."
 apt-get purge -y raspberrypi-net-mods dhcpcd5 triggerhappy nfs-common
 
+echo "  -> [Chroot] Injecting NetworkManager scripts..."
+cp /tmp/networkmanager/98-bt-gateway /etc/NetworkManager/dispatcher.d/98-bt-gateway
+cp /tmp/networkmanager/99-rtc-sync /etc/NetworkManager/dispatcher.d/99-rtc-sync
+
+chmod +x /etc/NetworkManager/dispatcher.d/98-bt-gateway
+chmod +x /etc/NetworkManager/dispatcher.d/99-rtc-sync
+
 echo "  -> [Chroot] Locking NetworkManager to ignore WiFi interfaces..."
 mkdir -p /etc/NetworkManager/conf.d/
 cat << 'NM_EOF' > /etc/NetworkManager/conf.d/99-unmanaged.conf
 [keyfile]
 unmanaged-devices=type:wifi;interface-name:wlan*;interface-name:mon*;interface-name:usb*
 NM_EOF
-
-echo "  -> [Chroot] Installing Event-Driven RTC Sync..."
-
-# Create the NetworkManager dispatcher script
-cat << 'RTC_EOF' > /etc/NetworkManager/dispatcher.d/99-rtc-sync
-#!/bin/bash
-# This script is triggered automatically by NetworkManager when a connection changes
-
-INTERFACE=$1
-ACTION=$2
-
-# Did a network interface just connect?
-if [ "$ACTION" = "up" ]; then
-    # Does RTC Hardware exist?
-    if [ -e /dev/rtc0 ]; then
-        # Run in a background subshell so we do not block NetworkManager
-        (
-            # Loop for up to 60 seconds waiting for a verified NTP sync
-            for i in {1..12}; do
-                if timedatectl status | grep -q "System clock synchronized: yes"; then
-                    # The OS time is officially accurate. Write it to the RTC chip.
-                    /sbin/hwclock -w
-                    exit 0
-                fi
-                sleep 5
-            done
-        ) &
-    fi
-fi
-RTC_EOF
-
-# Dispatcher scripts must be executable to run
-chmod +x /etc/NetworkManager/dispatcher.d/99-rtc-sync
 
 echo "  -> [Chroot] Generating UTF-8 Locales to fix encoding corruption..."
 apt-get install -y locales
