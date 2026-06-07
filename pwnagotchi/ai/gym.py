@@ -11,9 +11,9 @@ from pwnagotchi.ai.parameter import Parameter
 class Environment(gym.Env):
     metadata = {'render.modes': ['human']}
     params = [
-        Parameter('min_rssi', min_value=-200, max_value=-50),
-        Parameter('ap_ttl', min_value=30, max_value=600),
-        Parameter('sta_ttl', min_value=60, max_value=300),
+        Parameter('min_rssi', min_value=-120, max_value=-50),
+        Parameter('ap_ttl', min_value=30, max_value=120),
+        Parameter('sta_ttl', min_value=30, max_value=90),
 
         Parameter('recon_time', min_value=5, max_value=60),
         Parameter('max_inactive_scale', min_value=3, max_value=10),
