@@ -230,8 +230,9 @@ git clone https://github.com/bettercap/caplets.git /tmp/caplets
 cp -r /tmp/caplets/* /usr/local/share/bettercap/caplets/
 rm -rf /tmp/caplets
 
-echo "  -> [Chroot] Injecting custom pwnagotchi-manual.cap..."
+echo "  -> [Chroot] Injecting custom pwnagotchi caplets..."
 cp /tmp/bettercap_assets/pwnagotchi-manual.cap /usr/local/share/bettercap/caplets/pwnagotchi-manual.cap
+cp /tmp/bettercap_assets/pwnagotchi-auto.cap /usr/local/share/bettercap/caplets/pwnagotchi-auto.cap
 
 echo "  -> [Chroot] Stitching Bettercap Responsive Web Layout interface panels..."
 mkdir -p /usr/local/share/bettercap/ui
