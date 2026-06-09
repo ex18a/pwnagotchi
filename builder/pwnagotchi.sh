@@ -78,7 +78,7 @@ echo " [*] Step 7: Profiling and stage-routing assets..."
 # Hardcoded to match the Makefile working directory mapping
 cp -r builder/assets/nexmon /mnt/tmp/nexmon
 cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
-cp -r builder/assets/networkmanger /mnt/tmp/networkmanager
+cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
 
 echo " [*] Step 8: Fetching matching uncorrupted legacy kernel archives onto host workspace..."
 wget -q -O /mnt/tmp/raspberrypi-kernel.deb "http://archive.raspberrypi.org/debian/pool/main/r/raspberrypi-firmware/raspberrypi-kernel_1.20210527-1_armhf.deb"
